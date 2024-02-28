@@ -12,13 +12,14 @@ def goldmax_cli():
     print(Color.BLUE)
     prompt = GoldMaxPrompt()
     prompt.banner()
-    bash_prompt = Color.LIGHTBLUE_EX + '┌──(' + Color.RED + 'GoldMax' + Color.LIGHTBLUE_EX + ')─[~]' + '\n' + '└─$ '
+    bash_prompt = Color.LIGHTBLUE_EX + '┌──(' + Color.RED + 'GoldMax' + Color.LIGHTBLUE_EX + ')─[' + '~' + ']' + '\n' + '└─$ '
     prompt.prompt = Color.BLUE + bash_prompt
     prompt.cmdloop()
 
 
 class GoldMaxPrompt(Cmd):
     def __init__(self):
+        self.bash_prompt = Color.LIGHTBLUE_EX + '┌──(' + Color.RED + 'GoldMax' + Color.LIGHTBLUE_EX + ')─[' + '~' + ']' + '\n' + '└─$ '
         self.agent = None
         self.job = None
         self.http_server = None
@@ -32,6 +33,10 @@ class GoldMaxPrompt(Cmd):
         self.db = RedisDB()
         super().__init__()
 
+    def update_prompt(self):
+        """Add Agent"""
+        if self.agent:
+            self.prompt = self.bash_prompt.replace("~", self.agent)
     @staticmethod
     def banner():
         f = Figlet(font='shadow')
@@ -94,12 +99,33 @@ class GoldMaxPrompt(Cmd):
             if len(agent_name) >= 2:
                 for agent in agents:
                     index = agent.find('-')
-                    if agent.startswith(agent_name):
-                        return ['GoldMax-']
-                    elif agent_name in agent:
+                    if agent_name in agent:
                         return [agent[index + 1:]]
 
             return agents
+
+        # Autocomplete available jobs to set
+        if line.endswith('job ') or line.endswith('job'):
+            return ['Execute', 'Read', 'Write', 'Start', 'Update']
+
+        elif line[begidx:endidx] == 'R' or line[begidx:endidx] == 'r':
+            return ['Read']
+
+        elif line[begidx:endidx] == 'E' or line[begidx:endidx] == 'e':
+            return ['Execute']
+
+        elif line[begidx:endidx] == 'W' or line[begidx:endidx] == 'w':
+            return ['Write']
+
+        elif line[begidx:endidx] == 's' or line[begidx:endidx] == 'S':
+            return ['Start']
+
+        elif line[begidx:endidx] == 'u' or line[begidx:endidx] == 'U':
+            return ['Update']
+        else:
+            set_items = ['agent', 'job']
+
+        return set_items
 
     def do_stop(self, arg):
         """Shutdown All Active Servers"""
@@ -136,6 +162,7 @@ class GoldMaxPrompt(Cmd):
             if items[0] == 'agent':
                 print(f'Setting Active Agent : {items[1]}\n')
                 self.agent = items[1]
+                self.update_prompt()
 
             elif items[0] == 'job' and self.agent is not None:
                 job_args = items[1:]

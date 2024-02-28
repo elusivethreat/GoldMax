@@ -292,8 +292,8 @@ class RedisDB:
         jobs = self._find_jobs(agent, table)
 
         for job in jobs:
-            if cmd == job['cmd'][0]:
-                return job
+            #if cmd == job['cmd'][0]:
+            return job
 
     def find_agent(self, domain):
         """
