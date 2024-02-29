@@ -26,14 +26,15 @@ DB Structure:
                 'C2': Domain for comms
             }
 
-        (Pending / Active / Done):
+        (Pending / Active / Completed):
             {
                 paw: Unique UUID
                 cmd: Command for Execution   
             }
 """
-
-
+# To Do:
+# - There should only ever be on Active job for the malware, so make sure we send a new job if there is one Active
+# - Once we recv the results, we can use
 class RedisDB:
     def __init__(self, conn='localhost'):
         self.active = False
@@ -209,7 +210,7 @@ class RedisDB:
     def _update_table(self, table, jobs):
         """
         Move job from one "Status" to the next phase
-        Pending -> Active -> Done
+        Pending -> Active -> Completed
         :return:
         """
         current_jobs = self.get_items(table)
@@ -292,7 +293,6 @@ class RedisDB:
         jobs = self._find_jobs(agent, table)
 
         for job in jobs:
-            #if cmd == job['cmd'][0]:
             return job
 
     def find_agent(self, domain):
@@ -334,42 +334,47 @@ class RedisDB:
 
     def store_job_results(self, agent_name, results):
         """
-        Used for CALDERA
+        Used to update jobs from Active -> Completed and stores results in Redis
         :return:
         """
         redis_client = self.db
         active_jobs = {}
         completed_jobs = {}
 
+        # Validate table exists
         if redis_client.keys('Active'):
-            redisActive = json.loads(redis_client.get('Active').decode())
+            redis_active = json.loads(redis_client.get('Active').decode())
 
-            for aKey, aVal in redisActive.items():
-                target = aVal['paw']
+            # Iterate over all active items looking for our specific agent
+            for aKey, aVal in redis_active.items():
+                target = aVal['paw']    # UniqueId for agent
                 if agent_name in target:
                     active_jobs[aKey] = aVal
-                    """ Specific to GoldMax
-                    bad_response = [b'\x0b', b'\x10']
-                    for byte in bad_response:
-                        if byte in results:
-                            results = results.replace(byte, b'')
-                    """
+            # Iterate over found items and store results in Completed table
             for hKey, hVal in active_jobs.items():
-                completed_jobs[hKey] = {'paw': hVal['paw'],
-                                        'id': hVal['id'],
-                                        'output': base64.b64encode(results).decode()
-                                        }
-                redisActive.pop(hKey)
+                unique_id = hVal["id"]
+                # Clean results
+                if len(results) > 0x10:
+                    results = results[:0x10]
+                completed_jobs[unique_id] = {"paw": hVal["paw"],
+                                             "id": hVal["id"],
+                                             "cmd": hVal["cmd"],
+                                             "output": base64.b64encode(results.encode()).decode().strip()
+                                             }
+                redis_active.pop(hKey)
 
-            if redisActive:
-                self.update_redis('Active', redisActive)
+            # Clean up tables
+            if redis_active:
+                self.update_redis('Active', redis_active)
             else:
                 redis_client.delete('Active')
 
-            if redis_client.keys('Done'):
-                redisDone = json.loads(redis_client.get('Done').decode())
+            # Store results in Completed table
+            if redis_client.keys('Completed'):
+                redis_complete = json.loads(redis_client.get('Completed').decode())
+                # Use JobId as main key
                 for hdKey, hdVal in completed_jobs.items():
-                    redisDone[hdKey] = hdVal
-                self.update_redis('Done', redisDone)
+                    redis_complete[hdKey] = hdVal
+                self.update_redis('Completed', redis_complete)
             else:
-                redis_client.set('Done', json.dumps(completed_jobs))
+                redis_client.set('Completed', json.dumps(completed_jobs))

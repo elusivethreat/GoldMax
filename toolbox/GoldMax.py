@@ -12,6 +12,8 @@ class GoldMax:
         self.shared_secret = b"\x6A\x70\x46\x41\x58\x6F\x35\x4D"
         self.session_key = b"Dont_Forget_To_Encrypt_Please!!!"
         self.control_cookie = "48WxLONKwJEo="
+        self.response_operation = {"main_send_command_results": "b8mzj4u3sz4STb",
+                                   "main_send_file_part": "9AxKwjjA3eNLRBgV"}
         self.state = {
             "Authenticate": self.control_cookie + "wGMEvMwBW77HDj",
             "KeyExchange": self.control_cookie + "ndB3gbMjL",
@@ -357,8 +359,6 @@ class GoldMax:
         final_command = base64(custombase64 (command_format))
         """
         encoded_cmd = b''
-        cmd_to_send = b''
-        print(cmd_data)
         cmd_type = cmd_data[0]
 
         if cmd_type == 'Execute':

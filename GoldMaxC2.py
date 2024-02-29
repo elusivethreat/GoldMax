@@ -202,14 +202,17 @@ class GoldMaxPrompt(Cmd):
             print("None")
 
         # Completed jobs
-        completed_jobs = self.db.get_items("Done")
+        z = Table()
+        z.field_names = ["Agent", "JobId", "Cmd", "Results"]
+        z.align = "l"
+        completed_jobs = self.db.get_items("Completed")
         print(Color.GREEN + "\n[+] Completed Jobs [+]\n")
         if completed_jobs:
-            for job in completed_jobs:
-                print(job["Results"])
+            for job in completed_jobs.values():
+                z.add_row([job["paw"], job["id"], str(job["cmd"]), job["output"]])
+            print(Color.LIGHTBLUE_EX + str(z), Color.RESET)
         else:
             print("None")
-        print(Color.RESET)
 
     def do_status(self, arg):
         """
